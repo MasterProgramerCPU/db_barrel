@@ -121,9 +121,19 @@ func ensureNonNilTables(tables []Table) []Table {
 
 func main() {
 	var (
-		configPath = flag.String("config", "topology.json", "Path to the topology configuration file")
-		outputPath = flag.String("out", "topology.html", "Path to write the generated HTML")
-		timeout    = flag.Duration("timeout", 8*time.Second, "Timeout per database connection and query")
+		configPath   = flag.String("config", "topology.json", "Path to the topology configuration file")
+		outputPath   = flag.String("out", "topology.html", "Path to write the generated HTML")
+		timeout      = flag.Duration("timeout", 8*time.Second, "Timeout per database connection and query")
+		hostFlag     = flag.String("host", "", "Override host for all connections (optional)")
+		portFlag     = flag.Int("port", -1, "Override port for all connections (optional)")
+		userFlag     = flag.String("user", "", "Override user for all connections (optional)")
+		passwordFlag = flag.String("password", "", "Override password for all connections (optional)")
+		databaseFlag = flag.String("database", "", "Override database name for all connections (optional)")
+		driverFlag   = flag.String("driver", "", "Override driver for all connections (optional)")
+		nameFlag     = flag.String("name", "", "Override display name for all connections (optional)")
+		idFlag       = flag.String("id", "", "Override ID for all connections (optional)")
+		sslModeFlag  = flag.String("sslmode", "", "Override SSL mode for all connections (optional)")
+		sslRootFlag  = flag.String("sslrootcert", "", "Override SSL root certificate path for all connections (optional)")
 	)
 	flag.Parse()
 
@@ -131,6 +141,19 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
+
+	applyFlagOverrides(cfg, overrideOptions{
+		host:        *hostFlag,
+		port:        *portFlag,
+		user:        *userFlag,
+		password:    *passwordFlag,
+		database:    *databaseFlag,
+		driver:      *driverFlag,
+		name:        *nameFlag,
+		id:          *idFlag,
+		sslmode:     *sslModeFlag,
+		sslrootcert: *sslRootFlag,
+	})
 
 	topology, err := introspectTopology(context.Background(), cfg, *timeout)
 	if err != nil {
@@ -593,6 +616,62 @@ func displayName(id, display string) string {
 		return display
 	}
 	return id
+}
+
+type overrideOptions struct {
+	host        string
+	port        int
+	user        string
+	password    string
+	database    string
+	driver      string
+	name        string
+	id          string
+	sslmode     string
+	sslrootcert string
+}
+
+// applyFlagOverrides applies CLI overrides to every connection entry, if flags were provided.
+// This keeps JSON config as the source of truth while allowing quick tweaks.
+func applyFlagOverrides(cfg *Config, o overrideOptions) {
+	if cfg == nil {
+		return
+	}
+	if len(cfg.Databases) == 0 {
+		return
+	}
+	for i := range cfg.Databases {
+		if strings.TrimSpace(o.host) != "" {
+			cfg.Databases[i].Host = o.host
+		}
+		if o.port >= 0 {
+			cfg.Databases[i].Port = o.port
+		}
+		if strings.TrimSpace(o.user) != "" {
+			cfg.Databases[i].User = o.user
+		}
+		if strings.TrimSpace(o.password) != "" {
+			cfg.Databases[i].Password = o.password
+		}
+		if strings.TrimSpace(o.database) != "" {
+			cfg.Databases[i].Database = o.database
+		}
+		if strings.TrimSpace(o.driver) != "" {
+			cfg.Databases[i].Driver = o.driver
+		}
+		if strings.TrimSpace(o.name) != "" {
+			cfg.Databases[i].Name = o.name
+		}
+		if strings.TrimSpace(o.id) != "" {
+			cfg.Databases[i].ID = o.id
+		}
+		if strings.TrimSpace(o.sslmode) != "" {
+			cfg.Databases[i].SSLMode = o.sslmode
+		}
+		if strings.TrimSpace(o.sslrootcert) != "" {
+			cfg.Databases[i].SSLRootCA = o.sslrootcert
+		}
+	}
 }
 
 func buildHostMachineIndex(dbs []DatabaseConfig) map[string]string {
