@@ -1,0 +1,1512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>DB Barrel Topology</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg1: #f7f1e5;
+      --bg2: #eddcc2;
+      --bg3: #e3cfae;
+      --panel: rgba(255, 252, 245, 0.94);
+      --panel-border: rgba(120, 84, 40, 0.14);
+      --text: #2b1f14;
+      --muted: #6b5744;
+      --accent: #c47a32;
+      --accent-2: #8a5a2e;
+      --success: #3f7f5f;
+      --link: #d9a441;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Space Grotesk", "SF Pro Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+      color: var(--text);
+      background: radial-gradient(130% 120% at 15% 20%, var(--bg3) 0%, var(--bg2) 50%, var(--bg1) 100%);
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    #graph {
+      width: 100vw;
+      height: 100vh;
+      background: linear-gradient(135deg, rgba(196, 122, 50, 0.08), rgba(138, 90, 46, 0.07)), radial-gradient(140% 120% at 80% 20%, rgba(217, 164, 65, 0.16), rgba(247, 241, 229, 0.42));
+    }
+    .overlay {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+      z-index: 10;
+      max-width: 360px;
+    }
+    .title {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .title::before {
+      content: "";
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #e2a148, #c47a32);
+      box-shadow: 0 0 12px rgba(201, 138, 49, 0.8);
+    }
+    .subtitle { color: var(--muted); font-size: 13px; }
+    .badges { display: flex; gap: 8px; flex-wrap: wrap; }
+    .badge {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--panel-border);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .legend {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .legend span { display: flex; align-items: center; gap: 8px; }
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
+    }
+    .dot.db { background: var(--accent); }
+    .dot.instance { background: #5b3b22; }
+    .dot.machine { background: var(--accent-2); }
+    .dot.link { background: var(--link); }
+    .title-row { display:flex; align-items:center; gap:12px; }
+    .pill {
+      border: 1px solid var(--panel-border);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: transform 120ms ease, border-color 120ms ease;
+    }
+    .pill:hover { transform: translateY(-1px); border-color: rgba(255, 255, 255, 0.18); }
+    .logo-btn {
+      width: 40px; height: 40px; padding: 4px;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #f4e3c9, #eddcc2);
+      border: 1px solid var(--panel-border);
+      box-shadow: inset 0 -2px 6px rgba(0,0,0,0.25), 0 6px 16px rgba(0,0,0,0.3);
+    }
+    .logo-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      filter: drop-shadow(0 0 8px rgba(160,90,44,0.35));
+    }
+    #backBtn {
+      display: none;
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      z-index: 10;
+    }
+    #tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: linear-gradient(160deg, rgba(255, 252, 245, 0.98), rgba(247, 232, 206, 0.98));
+      border: 1px solid rgba(120, 84, 40, 0.18);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #2b1f14;
+      box-shadow: 0 12px 28px rgba(43, 31, 20, 0.18);
+      opacity: 0;
+      transition: opacity 100ms ease;
+      max-width: 260px;
+      backdrop-filter: blur(8px);
+    }
+    #tooltip.visible { opacity: 1; }
+    .badge strong { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="overlay">
+    <div class="title-row">
+      <button id="resetBtn" class="pill logo-btn" title="Reset view">
+        <img class="logo-img" src="data:image/svg&#43;xml;base64,PCEtLSBMaWNlbnNlOiBDQyBBdHRyaWJ1dGlvbi4gTWFkZSBieSBnYW1lLWljb25zLm5ldDogaHR0cHM6Ly9nYW1lLWljb25zLm5ldC8gLS0&#43;Cjxzdmcgd2lkdGg9IjUxMnB4IiBoZWlnaHQ9IjUxMnB4IiB2aWV3Qm94PSIwIDAgNTEyIDUxMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBmaWxsPSIjMDAwIiBkPSJNMjU2IDQxYy00My42OTYgMC04My4yOCAzLjU4LTExMS4zNyA5LjE5Ny0xNC4wNDcgMi44MS0yNS4yNiA2LjE5Ni0zMi4yMSA5LjQ4My0zLjQ3NiAxLjY0My01Ljg0MiAzLjI5My02Ljg4IDQuMzA2bC0uMDEzLjAxNC4wMTQuMDE0YzEuMDM4IDEuMDEzIDMuNDA0IDIuNjYzIDYuODggNC4zMDYgNi45NSAzLjI4NyAxOC4xNjMgNi42NzQgMzIuMjEgOS40ODNDMTcyLjcyIDgzLjQyIDIxMi4zMDMgODcgMjU2IDg3czgzLjI4LTMuNTggMTExLjM3LTkuMTk3YzE0LjA0Ny0yLjgxIDI1LjI2LTYuMTk2IDMyLjIxLTkuNDgzIDMuNDc2LTEuNjQzIDUuODQyLTMuMjkzIDYuODgtNC4zMDZsLjAxMy0uMDE0LS4wMTQtLjAxNGMtMS4wMzgtMS4wMTMtMy40MDQtMi42NjMtNi44OC00LjMwNi02Ljk1LTMuMjg3LTE4LjE2My02LjY3NC0zMi4yMS05LjQ4M0MzMzkuMjggNDQuNTggMjk5LjY5NyA0MSAyNTYgNDF6bS04MCAxNWEzMiA4IDAgMCAxIDMyIDggMzIgOCAwIDAgMS0zMiA4IDMyIDggMCAwIDEtMzItOCAzMiA4IDAgMCAxIDMyLTh6bS03NS4xNjggMjYuNTk0Yy0yLjgzMiAxMi4wMzUtNy40MTQgMzIuMTYyLTEyLjA1IDU1LjI4IDE2LjczNSA0LjMzOCAzMy41MiA3Ljk5IDUwLjMyNyAxMC45OTUgMi45ODgtMTcuMjAzIDYuNzA3LTM0LjQzOCAxMS4yNy01MS43MDgtMy4xODYtLjU0Ny02LjMtMS4xMTMtOS4yODItMS43MS0xNC45MS0yLjk4LTI3LjEzLTYuNDktMzYuMzctMTAuODYtMS4zNjMtLjY0NC0yLjY1Ni0xLjMwNy0zLjg5Ni0xLjk5OHptMzEwLjMzNiAwYy0xLjI0LjY5LTIuNTMzIDEuMzU0LTMuODk1IDEuOTk4LTkuMjQgNC4zNy0yMS40NjIgNy44OC0zNi4zNyAxMC44Ni0yLjkzLjU4Ny01Ljk5IDEuMTQyLTkuMTE2IDEuNjggNS4yNyAxNi45NTQgOS41NDQgMzQuMDMzIDEyLjk1MyA1MS4yMiAxNi4yNi0yLjk4MyAzMi40MTItNi41NjggNDguNDI0LTEwLjc1NC00LjYxNy0yMy05LjE3NS00My4wMTctMTEuOTk2LTU1LjAwNHptLTY3LjQgMTcuMjM4Yy0yMy4wNjUgMi45ODItNDkuOSA0LjgwMy03OC43NjggNS4xMTd2NTQuMTk4YzMwLjg4NS0uNDQ1IDYxLjYwMy0zLjA1IDkxLjk3NS03Ljc3My0zLjQ1LTE3LjMzNC03LjgwNS0zNC41MjMtMTMuMjA3LTUxLjU0M3ptLTE3NS40NzUuMDA4Yy00LjY0NyAxNy4zNDUtOC40MTYgMzQuNjctMTEuNDI2IDUxLjk4IDMwLjA2MiA0LjU0IDYwLjE2IDYuOTY3IDkwLjEzMyA3LjM1NFYxMDQuOTVjLTI4Ljg0Mi0uMzE0LTU1LjY1Ni0yLjEzMy03OC43MDctNS4xMXptLTg0LjM4IDU1LjI3N2wtNS41MTggMzAuMDg4YzEyOC41NDIgMzAuOTM2IDIzOS44OSAyOS45NDggMzUzLjM4NC4xMzdsLTQuOTgtMzAuMTcyYy0xMTAuNzc2IDI4Ljc5OC0yMjguMDM1IDI5Ljc4NS0zNDIuODg2LS4wNTN6bTM1MC42MzQgNDguMTc2Yy0xNi45NSA0LjQwNi0zMy44NzYgOC4xNzQtNTAuODMgMTEuMzEyIDMuNjU2IDQ3LjYwMyAxLjc3NiA5NS44Ny0zLjU1IDE0NC40OSAxOC42LTMuODAzIDM2Ljc5Ni04LjUyNyA1NC40NjgtMTQuMTdDNDM5LjU5MiAzMTQuNzYyIDQzOSAyOTEuNjA2IDQzOSAyNTZjMC0xNC45MTUtMS43Ny0zMy4zMzQtNC40NTMtNTIuNzA3em0tMzU3LjEzLjI1NkM3NC43NTggMjIyLjgyNyA3MyAyNDEuMTUgNzMgMjU2YzAgMjMuNzk0IDQuNjc4IDU3LjIyOCAxMC40MjQgODkuNDA0IDE2LjYwNCA0LjgyOCAzMy4zODYgOC45NyA1MC4yNyAxMi40MTgtNC41MzItNDcuNTE2LTYuMDMtOTUuMjQ3LTIuNTc3LTE0My4yMjItMTcuNjI0LTMuMDYzLTM1LjUwNy02Ljc0LTUzLjctMTEuMDV6bTcxLjU0NiAxMy45NDRjLTMuMzM2IDQ3Ljk3OC0xLjYzIDk1Ljg4MyAzLjE2NCAxNDMuODEzIDMxLjU1MyA1LjQ5IDYzLjM0OCA4LjU5MiA5NC44NzMgOS4zM1YyMjUuOTRjLTMxLjk5NS0uNTc2LTY0LjU3LTMuMzgtOTguMDM3LTguNDQ2em0yMTYuOTAyLjE5Yy0zMy4zMDMgNS4yNzUtNjYuNzkyIDguMDY4LTEwMC44NjUgOC4zNFYzNzAuOGMzMi44MTYtLjE3NCA2NS4yMjQtMi45MyA5Ni42NC04LjI1IDUuNjEtNDkuMDMyIDcuNzIyLTk3LjQxNyA0LjIyNS0xNDQuODY2ek04Ni42NiAzNjQuOTNsOC4yOSAzMS45YzEwNC4xNSAzMi4zOSAyMjUuNzUgMzIuNDI4IDMyNi4wNzcuNzMzbDguMjcyLTMyLjI2NGMtMTA2LjAyNCAzMS4zNjctMjI4LjAxIDMxLjM0LTM0Mi42NC0uMzd6bTExLjIzNiA1MS42NjZjMy44MTYgMTYuOTQ1IDYuNTg1IDI4LjE4MyA2LjcwNCAyOC42NjIuNzkyIDIuMTg1IDQuNjk0IDYuNDI3IDEyLjk2IDEwLjM3IDcuNTg3IDMuNjE2IDE4LjIxNSA2Ljk0NyAzMC43NyA5LjcwNC0yLjEzMi0xMi41NjYtNC4xNDItMjUuMTQ3LTYuMDE2LTM3Ljc0LTE1LjAzLTMuMDY2LTI5Ljg2NS02LjczMy00NC40MTgtMTAuOTk2em0zMTguMzY2IDEuMzFjLTE0LjkzNCA0LjM2LTMwLjI1NCA4LjA1Mi00NS44NTIgMTEuMDg2LTIuMDA3IDEyLjA4LTQuMTYgMjQuMTcyLTYuNDMgMzYuMjcyIDEyLjQyMi0yLjc0NSAyMi45MzUtNi4wNSAzMC40Ni05LjYzNyA4LjM3Ni0zLjk5NCAxMi4zMDItOC4zMTUgMTMuMDItMTAuNDczIDMuMjYtOS43OCA2LjE3OC0xOC44MTUgOC44MDItMjcuMjQ4em0tMjU1LjIxNyAxMy4xOGMxLjkxNyAxMi41NzQgMy45NyAyNS4xNTQgNi4xNDQgMzcuNzQgMjMuNjM3IDMuNjg0IDUxLjUyNSA1Ljc0OCA3OS44MSA2LjExVjQzOS4yNGMtMjguODE1LS42NDQtNTcuNjYtMy4zNi04NS45NTUtOC4xNTR6bTE5MC41NSAxLjIyM2MtMjguMzA2IDQuNDg0LTU3LjM3MyA2Ljg0Ny04Ni41OTUgNy4wN3YzNS41NTZjMjguMzU4LS4zNjMgNTYuMzE3LTIuNDM3IDc5Ljk5NC02LjE0IDIuMzMtMTIuMTkgNC41MzgtMjQuMzUzIDYuNjAyLTM2LjQ4N3oiLz48L3N2Zz4=" alt="Barrel logo" />
+      </button>
+      <div class="title">DB Barrel</div>
+    </div>
+    <div class="subtitle" id="subtitle">Generating...</div>
+    <div class="badges">
+      <span class="badge">Machines: <strong id="machineCount">-</strong></span>
+      <span class="badge">Databases: <strong id="dbCount">-</strong></span>
+      <span class="badge">Replication links: <strong id="linkCount">-</strong></span>
+      <span class="badge">Generated: <strong id="generatedAt">-</strong></span>
+    </div>
+    <div class="legend">
+      <span><span class="dot db"></span>Database</span>
+      <span><span class="dot instance"></span>Instance outline</span>
+      <span><span class="dot machine"></span>Machine outline</span>
+      <span><span class="dot link"></span>Replication link</span>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap: wrap; margin-top: 4px;">
+      <button id="backBtn" class="pill">Back to replication</button>
+    </div>
+  </div>
+  <div id="tooltip"></div>
+  <svg id="graph" width="1200" height="720"></svg>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <script>
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+  const svg = d3.select("#graph")
+      .attr("viewBox", [0, 0, width, height]);
+
+    const payload = {
+  "machines": [
+    {
+      "id": "192.168.64.25",
+      "name": "192.168.64.25",
+      "databases": [
+        {
+          "id": "192.168.64.25:5432:sales_db",
+          "name": "sales_db",
+          "driver": "postgres",
+          "host": "192.168.64.25",
+          "port": 5432,
+          "tables": [
+            {
+              "schema": "public",
+              "name": "customers",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('customers_id_seq'::regclass)"
+                },
+                {
+                  "name": "name",
+                  "data_type": "character varying",
+                  "is_nullable": true
+                },
+                {
+                  "name": "email",
+                  "data_type": "character varying",
+                  "is_nullable": true
+                },
+                {
+                  "name": "registered_at",
+                  "data_type": "timestamp without time zone",
+                  "is_nullable": true,
+                  "default_value": "now()"
+                }
+              ]
+            },
+            {
+              "schema": "public",
+              "name": "orders",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('orders_id_seq'::regclass)"
+                },
+                {
+                  "name": "customer_id",
+                  "data_type": "integer",
+                  "is_nullable": true
+                },
+                {
+                  "name": "amount",
+                  "data_type": "numeric",
+                  "is_nullable": true
+                },
+                {
+                  "name": "created_at",
+                  "data_type": "timestamp without time zone",
+                  "is_nullable": true,
+                  "default_value": "now()"
+                }
+              ]
+            }
+          ],
+          "foreign_keys": [
+            {
+              "schema": "public",
+              "table": "orders",
+              "column": "customer_id",
+              "ref_schema": "public",
+              "ref_table": "customers",
+              "ref_column": "id"
+            }
+          ]
+        },
+        {
+          "id": "192.168.64.25:5432:analytics_db",
+          "name": "analytics_db",
+          "driver": "postgres",
+          "host": "192.168.64.25",
+          "port": 5432,
+          "tables": [
+            {
+              "schema": "public",
+              "name": "events",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('events_id_seq'::regclass)"
+                },
+                {
+                  "name": "event_name",
+                  "data_type": "character varying",
+                  "is_nullable": true
+                },
+                {
+                  "name": "user_id",
+                  "data_type": "integer",
+                  "is_nullable": true
+                },
+                {
+                  "name": "event_time",
+                  "data_type": "timestamp without time zone",
+                  "is_nullable": true,
+                  "default_value": "now()"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "192.168.64.25:5432:inventory_db",
+          "name": "inventory_db",
+          "driver": "postgres",
+          "host": "192.168.64.25",
+          "port": 5432,
+          "tables": [
+            {
+              "schema": "public",
+              "name": "products",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('products_id_seq'::regclass)"
+                },
+                {
+                  "name": "product_name",
+                  "data_type": "character varying",
+                  "is_nullable": true
+                },
+                {
+                  "name": "stock",
+                  "data_type": "integer",
+                  "is_nullable": true
+                },
+                {
+                  "name": "price",
+                  "data_type": "numeric",
+                  "is_nullable": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "192.168.64.25:5433:sales_db",
+          "name": "sales_db",
+          "driver": "postgres",
+          "host": "192.168.64.25",
+          "port": 5433,
+          "tables": [
+            {
+              "schema": "public",
+              "name": "customers",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('customers_id_seq'::regclass)"
+                },
+                {
+                  "name": "name",
+                  "data_type": "character varying",
+                  "is_nullable": true
+                },
+                {
+                  "name": "email",
+                  "data_type": "character varying",
+                  "is_nullable": true
+                },
+                {
+                  "name": "registered_at",
+                  "data_type": "timestamp without time zone",
+                  "is_nullable": true,
+                  "default_value": "now()"
+                }
+              ]
+            },
+            {
+              "schema": "public",
+              "name": "orders",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('orders_id_seq'::regclass)"
+                },
+                {
+                  "name": "customer_id",
+                  "data_type": "integer",
+                  "is_nullable": true
+                },
+                {
+                  "name": "amount",
+                  "data_type": "numeric",
+                  "is_nullable": true
+                },
+                {
+                  "name": "created_at",
+                  "data_type": "timestamp without time zone",
+                  "is_nullable": true,
+                  "default_value": "now()"
+                }
+              ]
+            }
+          ],
+          "foreign_keys": [
+            {
+              "schema": "public",
+              "table": "orders",
+              "column": "customer_id",
+              "ref_schema": "public",
+              "ref_table": "customers",
+              "ref_column": "id"
+            }
+          ]
+        },
+        {
+          "id": "192.168.64.25:5433:analytics_db",
+          "name": "analytics_db",
+          "driver": "postgres",
+          "host": "192.168.64.25",
+          "port": 5433,
+          "tables": [
+            {
+              "schema": "public",
+              "name": "events",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('events_id_seq'::regclass)"
+                },
+                {
+                  "name": "event_name",
+                  "data_type": "character varying",
+                  "is_nullable": true
+                },
+                {
+                  "name": "user_id",
+                  "data_type": "integer",
+                  "is_nullable": true
+                },
+                {
+                  "name": "event_time",
+                  "data_type": "timestamp without time zone",
+                  "is_nullable": true,
+                  "default_value": "now()"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "192.168.64.25:5433:inventory_db",
+          "name": "inventory_db",
+          "driver": "postgres",
+          "host": "192.168.64.25",
+          "port": 5433,
+          "tables": [
+            {
+              "schema": "public",
+              "name": "products",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('products_id_seq'::regclass)"
+                },
+                {
+                  "name": "product_name",
+                  "data_type": "character varying",
+                  "is_nullable": true
+                },
+                {
+                  "name": "stock",
+                  "data_type": "integer",
+                  "is_nullable": true
+                },
+                {
+                  "name": "price",
+                  "data_type": "numeric",
+                  "is_nullable": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "192.168.64.25:5434:sales_db",
+          "name": "sales_db",
+          "driver": "postgres",
+          "host": "192.168.64.25",
+          "port": 5434,
+          "tables": [
+            {
+              "schema": "public",
+              "name": "customers",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('customers_id_seq'::regclass)"
+                },
+                {
+                  "name": "name",
+                  "data_type": "character varying",
+                  "is_nullable": true
+                },
+                {
+                  "name": "email",
+                  "data_type": "character varying",
+                  "is_nullable": true
+                },
+                {
+                  "name": "registered_at",
+                  "data_type": "timestamp without time zone",
+                  "is_nullable": true,
+                  "default_value": "now()"
+                }
+              ]
+            },
+            {
+              "schema": "public",
+              "name": "orders",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('orders_id_seq'::regclass)"
+                },
+                {
+                  "name": "customer_id",
+                  "data_type": "integer",
+                  "is_nullable": true
+                },
+                {
+                  "name": "amount",
+                  "data_type": "numeric",
+                  "is_nullable": true
+                },
+                {
+                  "name": "created_at",
+                  "data_type": "timestamp without time zone",
+                  "is_nullable": true,
+                  "default_value": "now()"
+                }
+              ]
+            }
+          ],
+          "foreign_keys": [
+            {
+              "schema": "public",
+              "table": "orders",
+              "column": "customer_id",
+              "ref_schema": "public",
+              "ref_table": "customers",
+              "ref_column": "id"
+            }
+          ]
+        },
+        {
+          "id": "192.168.64.25:5434:analytics_db",
+          "name": "analytics_db",
+          "driver": "postgres",
+          "host": "192.168.64.25",
+          "port": 5434,
+          "tables": [
+            {
+              "schema": "public",
+              "name": "events",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('events_id_seq'::regclass)"
+                },
+                {
+                  "name": "event_name",
+                  "data_type": "character varying",
+                  "is_nullable": true
+                },
+                {
+                  "name": "user_id",
+                  "data_type": "integer",
+                  "is_nullable": true
+                },
+                {
+                  "name": "event_time",
+                  "data_type": "timestamp without time zone",
+                  "is_nullable": true,
+                  "default_value": "now()"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "192.168.64.25:5434:inventory_db",
+          "name": "inventory_db",
+          "driver": "postgres",
+          "host": "192.168.64.25",
+          "port": 5434,
+          "tables": [
+            {
+              "schema": "public",
+              "name": "products",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('products_id_seq'::regclass)"
+                },
+                {
+                  "name": "product_name",
+                  "data_type": "character varying",
+                  "is_nullable": true
+                },
+                {
+                  "name": "stock",
+                  "data_type": "integer",
+                  "is_nullable": true
+                },
+                {
+                  "name": "price",
+                  "data_type": "numeric",
+                  "is_nullable": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "192.168.64.26",
+      "name": "192.168.64.26",
+      "databases": [
+        {
+          "id": "192.168.64.26:5432:postgres",
+          "name": "postgres",
+          "driver": "postgres",
+          "host": "192.168.64.26",
+          "port": 5432,
+          "tables": []
+        },
+        {
+          "id": "192.168.64.26:5433:auth_db",
+          "name": "auth_db",
+          "driver": "postgres",
+          "host": "192.168.64.26",
+          "port": 5433,
+          "tables": [
+            {
+              "schema": "public",
+              "name": "roles",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('roles_id_seq'::regclass)"
+                },
+                {
+                  "name": "name",
+                  "data_type": "character varying",
+                  "is_nullable": false
+                }
+              ]
+            },
+            {
+              "schema": "public",
+              "name": "users",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('users_id_seq'::regclass)"
+                },
+                {
+                  "name": "username",
+                  "data_type": "character varying",
+                  "is_nullable": false
+                },
+                {
+                  "name": "password_hash",
+                  "data_type": "text",
+                  "is_nullable": false
+                },
+                {
+                  "name": "email",
+                  "data_type": "character varying",
+                  "is_nullable": false
+                },
+                {
+                  "name": "created_at",
+                  "data_type": "timestamp without time zone",
+                  "is_nullable": true,
+                  "default_value": "now()"
+                },
+                {
+                  "name": "role_id",
+                  "data_type": "integer",
+                  "is_nullable": true
+                }
+              ]
+            }
+          ],
+          "foreign_keys": [
+            {
+              "schema": "public",
+              "table": "users",
+              "column": "role_id",
+              "ref_schema": "public",
+              "ref_table": "roles",
+              "ref_column": "id"
+            }
+          ]
+        },
+        {
+          "id": "192.168.64.26:5433:fitness_db",
+          "name": "fitness_db",
+          "driver": "postgres",
+          "host": "192.168.64.26",
+          "port": 5433,
+          "tables": [
+            {
+              "schema": "public",
+              "name": "categories",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('categories_id_seq'::regclass)"
+                },
+                {
+                  "name": "name",
+                  "data_type": "character varying",
+                  "is_nullable": false
+                }
+              ]
+            },
+            {
+              "schema": "public",
+              "name": "exercises",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('exercises_id_seq'::regclass)"
+                },
+                {
+                  "name": "name",
+                  "data_type": "character varying",
+                  "is_nullable": false
+                },
+                {
+                  "name": "category_id",
+                  "data_type": "integer",
+                  "is_nullable": true
+                },
+                {
+                  "name": "difficulty",
+                  "data_type": "integer",
+                  "is_nullable": true
+                }
+              ]
+            },
+            {
+              "schema": "public",
+              "name": "workout_exercises",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('workout_exercises_id_seq'::regclass)"
+                },
+                {
+                  "name": "workout_id",
+                  "data_type": "integer",
+                  "is_nullable": true
+                },
+                {
+                  "name": "exercise_id",
+                  "data_type": "integer",
+                  "is_nullable": true
+                },
+                {
+                  "name": "reps",
+                  "data_type": "integer",
+                  "is_nullable": true
+                },
+                {
+                  "name": "sets",
+                  "data_type": "integer",
+                  "is_nullable": true
+                }
+              ]
+            },
+            {
+              "schema": "public",
+              "name": "workouts",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('workouts_id_seq'::regclass)"
+                },
+                {
+                  "name": "title",
+                  "data_type": "character varying",
+                  "is_nullable": false
+                },
+                {
+                  "name": "description",
+                  "data_type": "text",
+                  "is_nullable": true
+                },
+                {
+                  "name": "duration_min",
+                  "data_type": "integer",
+                  "is_nullable": true
+                }
+              ]
+            }
+          ],
+          "foreign_keys": [
+            {
+              "schema": "public",
+              "table": "exercises",
+              "column": "category_id",
+              "ref_schema": "public",
+              "ref_table": "categories",
+              "ref_column": "id"
+            },
+            {
+              "schema": "public",
+              "table": "workout_exercises",
+              "column": "workout_id",
+              "ref_schema": "public",
+              "ref_table": "workouts",
+              "ref_column": "id"
+            },
+            {
+              "schema": "public",
+              "table": "workout_exercises",
+              "column": "exercise_id",
+              "ref_schema": "public",
+              "ref_table": "exercises",
+              "ref_column": "id"
+            }
+          ]
+        },
+        {
+          "id": "192.168.64.26:5433:tracking_db",
+          "name": "tracking_db",
+          "driver": "postgres",
+          "host": "192.168.64.26",
+          "port": 5433,
+          "tables": [
+            {
+              "schema": "public",
+              "name": "exercise_logs",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('exercise_logs_id_seq'::regclass)"
+                },
+                {
+                  "name": "log_id",
+                  "data_type": "integer",
+                  "is_nullable": true
+                },
+                {
+                  "name": "exercise_id",
+                  "data_type": "integer",
+                  "is_nullable": false
+                },
+                {
+                  "name": "reps",
+                  "data_type": "integer",
+                  "is_nullable": true
+                },
+                {
+                  "name": "weight_kg",
+                  "data_type": "numeric",
+                  "is_nullable": true
+                }
+              ]
+            },
+            {
+              "schema": "public",
+              "name": "workout_logs",
+              "columns": [
+                {
+                  "name": "id",
+                  "data_type": "integer",
+                  "is_nullable": false,
+                  "default_value": "nextval('workout_logs_id_seq'::regclass)"
+                },
+                {
+                  "name": "user_id",
+                  "data_type": "integer",
+                  "is_nullable": false
+                },
+                {
+                  "name": "workout_id",
+                  "data_type": "integer",
+                  "is_nullable": false
+                },
+                {
+                  "name": "performed_at",
+                  "data_type": "timestamp without time zone",
+                  "is_nullable": true,
+                  "default_value": "now()"
+                },
+                {
+                  "name": "notes",
+                  "data_type": "text",
+                  "is_nullable": true
+                }
+              ]
+            }
+          ],
+          "foreign_keys": [
+            {
+              "schema": "public",
+              "table": "exercise_logs",
+              "column": "log_id",
+              "ref_schema": "public",
+              "ref_table": "workout_logs",
+              "ref_column": "id"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "replication": [],
+  "generated_at": "2025-11-25T12:50:01.578342Z"
+};
+    const dbIconUri = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzNTMiIGhlaWdodD0iNTEyIiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJ4TWlkWU1pZCI+CiAgPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNMjk5LjU5NiA0OTIuMjIzQzI2Ni44NTYgNTA0Ljk3NiAyMjMuNDk2IDUxMiAxNzcuNSA1MTJjLTQ1Ljk5NiAwLTg5LjM1Ny03LjAyNC0xMjIuMDk1LTE5Ljc3Ny0zNS4wODMtMTMuNjY3LTU0LjQwNC0zMi43NjYtNTQuNDA0LTUzLjc4VjczLjU1N2MwLTIxLjAxNCAxOS4zMjEtNDAuMTEzIDU0LjQwNC01My43OEM4OC4xNDQgNy4wMjQgMTMxLjUwNCAwIDE3Ny41IDBjNDUuOTk2IDAgODkuMzU2IDcuMDI0IDEyMi4wOTYgMTkuNzc4IDM1LjA2OSAxMy42NjEgNTQuMzg3IDMyLjc1MSA1NC40MDIgNTMuNzU2IDAgLjAwNy4wMDEuMDE0LjAwMS4wMjN2MzY0Ljg4NmMwIDIxLjAxNC0xOS4zMjEgNDAuMTEzLTU0LjQwMyA1My43OFpNMjkzLjg3MiAzNC40NEMyNjIuOTE0IDIyLjM4MSAyMjEuNTg1IDE1LjczOSAxNzcuNSAxNS43MzljLTQ0LjA4NSAwLTg1LjQxNCA2LjY0Mi0xMTYuMzcyIDE4LjcwMi0yOC4yIDEwLjk4NC00NC4zNzQgMjUuMjQzLTQ0LjM3NCAzOS4xMTYgMCAxMy44NzMgMTYuMTc0IDI4LjEzMSA0NC4zNzQgMzkuMTE2IDMwLjk1OCAxMi4wNTggNzIuMjg3IDE4LjcgMTE2LjM3MiAxOC43IDE2LjUzMiAwIDMyLjY3NS0uOTM0IDQ4LjAzMS0yLjczOCAyNS41OTItMy4wMDUgNDguOTkyLTguNDI1IDY4LjM0MS0xNS45NjMgMjguMTk5LTEwLjk4NSA0NC4zNzItMjUuMjQzIDQ0LjM3Mi0zOS4xMTYgMC0xMy44NzMtMTYuMTcyLTI4LjEzMS00NC4zNzItMzkuMTE2Wm00NC4zNzUgNzAuMzkzYy0uMDE1LjAxNC0uMDMxLjAyNy0uMDQ2LjA0MS0uMTMzLjEyMi0uMjc1LjI0NC0uNDEuMzY3LTEwLjkxMiA5LjkxLTI0LjU1NCAxNi43ODEtMzguMTk0IDIyLjA5NS0yMS40ODUgOC4zNjktNDcuNTQ0IDE0LjI3LTc1LjkyMSAxNy4zMzktMTQuODY1IDEuNjA4LTMwLjM2NCAyLjQzOC00Ni4xNzUgMi40MzgtNDUuOTk2IDAtODkuMzU3LTcuMDI0LTEyMi4wOTUtMTkuNzc3LTEzLjg5Ni01LjQxMy0yNy41ODctMTIuMjY2LTM4LjYxNC0yMi40NjktLjAxMi0uMDExLS4wMjQtLjAyMS0uMDM2LS4wMzJ2OTAuMzVjMCAxMy44NzIgMTYuMTczIDI4LjEzIDQ0LjM3MyAzOS4xMTUgMjYuMTIxIDEwLjE3NiA1OS42MjQgMTYuNDk1IDk1LjkzOCAxOC4yMjEgNi44MDUuMzI1IDEzLjYyLjQ4MiAyMC40MzQuNDgyIDQ4Ljc0MyAwIDEwNi4xODQtMy41ODIgMTQ2LjEzMi0zNC42OTIgNS4zMDctNC4xMzMgMTAuMjY0LTkuMDI0IDEyLjkzNi0xNS4zMDUgMS4wNDktMi40NiAxLjY3OC01LjEzOSAxLjY3OC03Ljgydi05MC4zNTNabS4wMDEgMTIxLjYyN2MtLjAxMi4wMDktLjAyNC4wMi0uMDM0LjAyOS0yLjUyOCAyLjMxOS01LjIwNCA0LjQ3NS03Ljk5OCA2LjQ2OS0xNy4zODMgMTIuNDEtMzguMjQ3IDE5LjY5NS01OC43ODggMjQuOTIyLTE2Ljk5NCA0LjMyNC0zNS43MDEgNy40MjQtNTUuNDA2IDkuMTc3LS4xNzIuMDE0LS4zNDMuMDMyLS41MTUuMDQ3LTYuNDg1LjU2OC0xMy4wNzcuOTg3LTE5Ljc0OSAxLjI2MS02LjAyNi4yNDgtMTIuMTE3LjM3Ny0xOC4yNTYuMzc3LTQ1Ljk5NiAwLTg5LjM1Ny03LjAyNC0xMjIuMDk1LTE5Ljc3Ny0xMy42NTItNS4zMTYtMjcuMjE3LTEyLjE0My0zOC4xMzktMjIuMDQ1LS4xNTUtLjE0MS0uMzE3LS4yNzktLjQ3MS0uNDIxLS4wMTMtLjAxMi0uMDI2LS4wMjQtLjA0LS4wMzZ2OTAuMzUyYzAgMTMuODczIDE2LjE3MyAyOC4xMzEgNDQuMzczIDM5LjExNiAzMC45NTggMTIuMDU5IDcyLjI4NyAxOC43MDEgMTE2LjM3MiAxOC43MDEgMTEuODgxIDAgMjMuNTU5LS40ODcgMzQuODktMS40MjkuODEzLS4wNjYgMS42MjUtLjEzNyAyLjQzMy0uMjA4IDI5Ljc2Ny0yLjY1NSA1Ny4wMzItOC40ODcgNzkuMDQ5LTE3LjA2NCAxMi4wMjgtNC42ODUgMjEuODU5LTkuOTY3IDI5LjE4OS0xNS41NTkgNi4xNzEtNC43MDggMTIuMjUtMTAuNjcxIDE0LjQzNi0xOC4zNDQuMDE1LS4wNTIuMDI0LS4xMDQuMDM5LS4xNTUuNDU4LTEuNjQ4LjcxLTMuMzQ4LjcxLTUuMDU5VjIyNi40NlptLjAwMiAxMjEuNjI4Yy0uMDEzLjAxMi0uMDI1LjAyMi0uMDM4LjAzNC0uMTcyLjE1OS0uMzU2LjMxNy0uNTMxLjQ3NS0yLjU1MiAyLjMwOS01LjI1NSA0LjQ0NS04LjA3MyA2LjQyLTkuMjYxIDYuNDg3LTE5LjQ5MiAxMS40OC0zMC4wMSAxNS41NzctMjguNTA4IDExLjEwMy02NS4wNyAxNy44NjEtMTA0LjQxMSAxOS40MjMtNS44MzkuMjMyLTExLjczOC4zNTItMTcuNjgzLjM1Mi00NS45OTYgMC04OS4zNTctNy4wMjQtMTIyLjA5NS0xOS43NzctMTMuNjg3LTUuMzMtMjcuMTI3LTEyLjA3MS0zOC4wODYtMjEuOTk3LS4xNzQtLjE1Ny0uMzU2LS4zMTQtLjUyOC0uNDcyLS4wMTMtLjAxMi0uMDI1LS4wMjItLjAzOC0uMDM0djkwLjM1MmMwIDEzLjg3MiAxNi4xNzMgMjguMTMgNDQuMzczIDM5LjExNSAzMC45NTkgMTIuMDYgNzIuMjg2IDE4LjcwMiAxMTYuMzcyIDE4LjcwMnM4NS40MTQtNi42NDIgMTE2LjM3My0xOC43MDJjMjguMTk5LTEwLjk4NSA0NC4zNzItMjUuMjQxIDQ0LjM3Mi0zOS4xMTVoLjAwM3YtOTAuMzUzWm0tMjguMTc0IDgwLjg4M2MtNy45NDkgMC0xNC4zOTMtNi40MzgtMTQuMzkzLTE0LjM4MSAwLTcuOTQyIDYuNDQ0LTE0LjM4MSAxNC4zOTMtMTQuMzgxIDcuOTUgMCAxNC4zOTQgNi40MzkgMTQuMzk0IDE0LjM4MSAwIDcuOTQzLTYuNDQ0IDE0LjM4MS0xNC4zOTQgMTQuMzgxWm0tNDkuOTU2IDE1LjA0N2MtNy45NDkgMC0xNC4zOTMtNi40MzgtMTQuMzkzLTE0LjM4MSAwLTcuOTQyIDYuNDQ0LTE0LjM4MSAxNC4zOTMtMTQuMzgxIDcuOTQ5IDAgMTQuMzk0IDYuNDM5IDE0LjM5NCAxNC4zODEgMCA3Ljk0My02LjQ0NSAxNC4zODEtMTQuMzk0IDE0LjM4MVptLTUzLjAxMiA4LjIzN2MtNy45NDkgMC0xNC4zOTMtNi40MzgtMTQuMzkzLTE0LjM4MSAwLTcuOTQyIDYuNDQ0LTE0LjM4MSAxNC4zOTMtMTQuMzgxIDcuOTQ5IDAgMTQuMzkzIDYuNDM5IDE0LjM5MyAxNC4zODEgMCA3Ljk0My02LjQ0NCAxNC4zODEtMTQuMzkzIDE0LjM4MVptMTAyLjk2OC0xNDMuODc3Yy03Ljk0OSAwLTE0LjM5My02LjQzOS0xNC4zOTMtMTQuMzgxIDAtNy45NDMgNi40NDQtMTQuMzgxIDE0LjM5My0xNC4zODEgNy45NSAwIDE0LjM5NCA2LjQzOCAxNC4zOTQgMTQuMzgxIDAgNy45NDItNi40NDQgMTQuMzgxLTE0LjM5NCAxNC4zODFabS00OS45NTYgMTUuMDU3Yy03Ljk0OSAwLTE0LjM5My02LjQzOS0xNC4zOTMtMTQuMzgxIDAtNy45NDMgNi40NDQtMTQuMzgxIDE0LjM5My0xNC4zODEgNy45NDkgMCAxNC4zOTQgNi40MzggMTQuMzk0IDE0LjM4MSAwIDcuOTQyLTYuNDQ1IDE0LjM4MS0xNC4zOTQgMTQuMzgxWm0tNTMuMDEyIDguMjM3Yy03Ljk0OSAwLTE0LjM5My02LjQzOS0xNC4zOTMtMTQuMzgxIDAtNy45NDMgNi40NDQtMTQuMzgxIDE0LjM5My0xNC4zODEgNy45NDkgMCAxNC4zOTMgNi40MzggMTQuMzkzIDE0LjM4MSAwIDcuOTQyLTYuNDQ0IDE0LjM4MS0xNC4zOTMgMTQuMzgxWm0xMDIuOTY4LTE0NS45ODZjLTcuOTQ5IDAtMTQuMzkzLTYuNDM4LTE0LjM5My0xNC4zODEgMC03Ljk0MiA2LjQ0NC0xNC4zODEgMTQuMzkzLTE0LjM4MSA3Ljk1IDAgMTQuMzk0IDYuNDM5IDE0LjM5NCAxNC4zODEgMCA3Ljk0My02LjQ0NCAxNC4zODEtMTQuMzk0IDE0LjM4MVptLTQ5Ljk1NiAxNS4wNTdjLTcuOTQ5IDAtMTQuMzkzLTYuNDM4LTE0LjM5My0xNC4zODEgMC03Ljk0MiA2LjQ0NC0xNC4zODEgMTQuMzkzLTE0LjM4MSA3Ljk0OSAwIDE0LjM5NCA2LjQzOSAxNC4zOTQgMTQuMzgxIDAgNy45NDMtNi40NDUgMTQuMzgxLTE0LjM5NCAxNC4zODFabS01My4wMTIgOC4yMzdjLTcuOTQ5IDAtMTQuMzkzLTYuNDM4LTE0LjM5My0xNC4zODEgMC03Ljk0MiA2LjQ0NC0xNC4zODEgMTQuMzkzLTE0LjM4MSA3Ljk0OSAwIDE0LjM5MyA2LjQzOSAxNC4zOTMgMTQuMzgxIDAgNy45NDMtNi40NDQgMTQuMzgxLTE0LjM5MyAxNC4zODFaIi8+Cjwvc3ZnPg==";
+    const backBtn = document.getElementById("backBtn");
+    const resetBtn = document.getElementById("resetBtn");
+    const tooltip = document.getElementById("tooltip");
+
+    const machineCount = (payload.machines || []).length;
+    const dbCount = (payload.machines || []).reduce((sum, m) => sum + (m.databases || []).length, 0);
+    const linkCount = (payload.replication || []).length;
+
+    document.getElementById("machineCount").textContent = machineCount;
+    document.getElementById("dbCount").textContent = dbCount;
+    document.getElementById("linkCount").textContent = linkCount;
+    document.getElementById("generatedAt").textContent = payload.generated_at ? new Date(payload.generated_at).toLocaleString() : "n/a";
+    document.getElementById("subtitle").textContent = "Double-click a node for schema; drag to explore.";
+
+    function clearSvg() { svg.selectAll("*").remove(); }
+
+    function groupBy(arr, keyFn) {
+      const out = {};
+      arr.forEach(item => {
+        const k = keyFn(item);
+        if (!out[k]) out[k] = [];
+        out[k].push(item);
+      });
+      return out;
+    }
+
+    function replicationNodesLinks() {
+      const nodes = [];
+      const links = [];
+      (payload.machines || []).forEach(m => {
+        (m.databases || []).forEach(db => {
+          if ((db.name || db.id || "").toLowerCase() === "postgres") return;
+          nodes.push({
+            id: db.id,
+            label: db.name || db.id,
+            machine: m.id,
+            instance: (db.host || m.id) + ":" + (db.port || ""),
+          });
+        });
+      });
+      (payload.replication || []).forEach(r => {
+        links.push({
+          source: r.from_db || findFirstDb(r.from_machine),
+          target: r.to_db || findFirstDb(r.to_machine),
+          label: r.type || "replication",
+          lag: r.lag_seconds
+        });
+      });
+      return { nodes, links };
+    }
+
+    function findFirstDb(machineId) {
+      const m = (payload.machines || []).find(mm => mm.id === machineId);
+      return m?.databases?.[0]?.id || machineId;
+    }
+
+    function labelForLink(d) {
+      const lag = (d.lag || d.lag === 0) ? " (" + d.lag + "s)" : "";
+      return (d.label || "replication") + lag;
+    }
+
+    function drawDbIcon(selection) {
+      selection.append("image")
+        .attr("href", dbIconUri)
+        .attr("x", -28)
+        .attr("y", -28)
+        .attr("width", 56)
+        .attr("height", 56);
+    }
+
+  function drawOutlines(layer, groups, style) {
+    Object.values(groups).forEach(nodes => {
+      if (!nodes.length) return;
+      const minX = d3.min(nodes, d => d.x);
+      const maxX = d3.max(nodes, d => d.x);
+      const minY = d3.min(nodes, d => d.y);
+      const maxY = d3.max(nodes, d => d.y);
+      layer.append("rect")
+        .attr("x", minX - 70)
+        .attr("y", minY - 70)
+        .attr("width", (maxX - minX) + 140)
+        .attr("height", (maxY - minY) + 140)
+        .attr("rx", 14)
+        .attr("ry", 14)
+        .attr("fill", style.fill || "none")
+        .attr("stroke", style.stroke)
+        .attr("stroke-width", style.width)
+        .attr("stroke-dasharray", style.dash)
+        .attr("opacity", style.opacity ?? 0.7)
+        .attr("pointer-events", "none");
+    });
+  }
+
+  function boundsForGroups(groups) {
+    const result = [];
+    Object.entries(groups).forEach(([key, nodes]) => {
+      if (!nodes.length) return;
+      const minX = d3.min(nodes, d => d.x);
+      const maxX = d3.max(nodes, d => d.x);
+      const minY = d3.min(nodes, d => d.y);
+      const maxY = d3.max(nodes, d => d.y);
+      result.push({
+        id: key,
+        minX, maxX, minY, maxY,
+        cx: (minX + maxX) / 2,
+        cy: (minY + maxY) / 2 - 60
+      });
+    });
+    return result;
+  }
+
+    function drag(sim) {
+      function dragstarted(event, d) {
+        if (!event.active) sim.alphaTarget(0.3).restart();
+        d.fx = d.x; d.fy = d.y;
+      }
+      function dragged(event, d) { d.fx = event.x; d.fy = event.y; }
+      function dragended(event, d) { if (!event.active) sim.alphaTarget(0); }
+      return d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended);
+    }
+
+  function attachTooltip(selection, formatter) {
+      selection
+        .on("mouseover", (event, d) => {
+          tooltip.innerHTML = formatter(d);
+          tooltip.style.left = (event.pageX + 12) + "px";
+          tooltip.style.top = (event.pageY + 12) + "px";
+          tooltip.classList.add("visible");
+        })
+        .on("mousemove", (event) => {
+          tooltip.style.left = (event.pageX + 12) + "px";
+          tooltip.style.top = (event.pageY + 12) + "px";
+        })
+        .on("mouseout", () => {
+          tooltip.classList.remove("visible");
+        });
+    }
+
+    function renderReplicationGraph() {
+      backBtn.style.display = "none";
+      document.getElementById("subtitle").textContent = "Replication view. Double-click a DB to see its schema.";
+      updateLegend("replication");
+      clearSvg();
+
+      const { nodes, links } = replicationNodesLinks();
+      const defs = svg.append("defs");
+      defs.append("marker")
+          .attr("id", "arrow")
+          .attr("viewBox", "0 0 10 10")
+          .attr("refX", 16)
+          .attr("refY", 5)
+          .attr("markerWidth", 10)
+          .attr("markerHeight", 10)
+          .attr("orient", "auto")
+        .append("path")
+          .attr("d", "M 0 0 L 10 5 L 0 10 z")
+          .attr("fill", "var(--link)");
+
+      const zoomLayer = svg.append("g");
+      const zoomBehavior = d3.zoom().scaleExtent([0.35, 2.5]).on("zoom", (event) => zoomLayer.attr("transform", event.transform));
+      svg.call(zoomBehavior);
+      svg.call(zoomBehavior.transform, d3.zoomIdentity.scale(0.8).translate(80, 40));
+
+      const machineIds = Array.from(new Set((payload.machines || []).map(m => m.id)));
+      const radius = Math.min(width, height) * 0.42;
+      const machineCenters = {};
+      machineIds.forEach((id, idx) => {
+        const angle = (2 * Math.PI * idx) / Math.max(machineIds.length, 1);
+        machineCenters[id] = {
+          x: width / 2 + Math.cos(angle) * radius,
+          y: height / 2 + Math.sin(angle) * radius,
+        };
+      });
+
+      const instanceCenters = {};
+      (payload.machines || []).forEach(m => {
+        const dbs = (m.databases || []).filter(db => (db.name || db.id || "").toLowerCase() !== "postgres");
+        const uniqInstances = Array.from(new Set(dbs.map(db => (db.host || m.id) + ":" + (db.port || ""))));
+        const instRadius = 260;
+        uniqInstances.forEach((inst, idx) => {
+          const angle = (2 * Math.PI * idx) / Math.max(uniqInstances.length, 1);
+          const mc = machineCenters[m.id] || { x: width / 2, y: height / 2 };
+          instanceCenters[inst] = {
+            x: mc.x + Math.cos(angle) * instRadius,
+            y: mc.y + Math.sin(angle) * instRadius,
+          };
+        });
+      });
+
+      
+      const simNodes = nodes.map(n => {
+        const instPos = instanceCenters[n.instance] || machineCenters[n.machine] || { x: width / 2, y: height / 2 };
+        return { ...n, x: instPos.x, y: instPos.y };
+      });
+      const sim = d3.forceSimulation(simNodes)
+        .force("link", d3.forceLink(links).id(d => d.id).distance(180))
+        .force("charge", d3.forceManyBody().strength(-150))
+        .force("collision", d3.forceCollide().radius(70))
+      .force("machineX", d3.forceX(d => machineCenters[d.machine]?.x || width / 2).strength(0.08))
+      .force("machineY", d3.forceY(d => machineCenters[d.machine]?.y || height / 2).strength(0.08))
+        .force("instanceX", d3.forceX(d => instanceCenters[d.instance]?.x || width / 2).strength(0.1))
+        .force("instanceY", d3.forceY(d => instanceCenters[d.instance]?.y || height / 2).strength(0.1));
+
+      const link = zoomLayer.append("g")
+          .attr("stroke", "rgba(217, 164, 65, 0.8)")
+          .attr("stroke-width", 2)
+        .selectAll("line")
+        .data(links)
+        .join("line")
+          .attr("marker-end", "url(#arrow)");
+
+      const linkLabel = zoomLayer.append("g")
+        .selectAll("text")
+        .data(links)
+        .join("text")
+          .attr("class", "lag")
+          .attr("fill", "#6b5744")
+          .attr("font-size", 11)
+          .text(d => labelForLink(d));
+
+      const node = zoomLayer.append("g")
+        .selectAll("g")
+        .data(simNodes)
+        .join("g")
+          .style("cursor", "pointer")
+          .on("dblclick", (_, d) => renderDbGraph(d.id))
+          .call(drag(sim));
+
+      drawDbIcon(node);
+      attachTooltip(node, d => '<strong>' + d.label + '</strong><br/>Machine: ' + d.machine + '<br/>Instance: ' + d.instance);
+
+      node.append("text")
+        .attr("text-anchor", "middle")
+        .attr("dy", 40)
+        .attr("fill", "#2b1f14")
+        .style("font", "12px \"Space Grotesk\", system-ui, sans-serif")
+        .text(d => d.label);
+
+      const machines = groupBy(simNodes, n => n.machine);
+      const instances = groupBy(simNodes, n => n.instance);
+      const machineLayer = zoomLayer.append("g");
+      const instanceLayer = zoomLayer.append("g");
+      const machineLabelLayer = zoomLayer.append("g");
+      const instanceLabelLayer = zoomLayer.append("g");
+
+      sim.on("tick", () => {
+        link
+          .attr("x1", d => d.source.x)
+          .attr("y1", d => d.source.y)
+          .attr("x2", d => d.target.x)
+          .attr("y2", d => d.target.y);
+
+        linkLabel
+          .attr("x", d => (d.source.x + d.target.x) / 2)
+          .attr("y", d => (d.source.y + d.target.y) / 2 - 6);
+
+        node.attr("transform", d => 'translate(' + d.x + ',' + d.y + ')');
+
+        machineLayer.selectAll("*").remove();
+        instanceLayer.selectAll("*").remove();
+        machineLabelLayer.selectAll("*").remove();
+        instanceLabelLayer.selectAll("*").remove();
+
+        const machineGroups = groupBy(simNodes, n => n.machine);
+        const instanceGroups = groupBy(simNodes, n => n.instance);
+        drawOutlines(machineLayer, machineGroups, { stroke: "var(--accent-2)", width: 2, dash: "6,4", fill: "rgba(196,122,50,0.08)", opacity: 0.82 });
+        drawOutlines(instanceLayer, instanceGroups, { stroke: "#5b3b22", width: 1.6, dash: "0", fill: "rgba(91,59,34,0.07)", opacity: 0.6 });
+
+        const machineBounds = boundsForGroups(machineGroups);
+        machineLabelLayer.selectAll("text")
+          .data(machineBounds)
+          .join("text")
+          .attr("x", d => d.cx)
+          .attr("y", d => d.minY - 80)
+          .attr("text-anchor", "middle")
+          .attr("fill", "var(--accent-2)")
+          .style("font", "11px \"Space Grotesk\", system-ui, sans-serif")
+          .text(d => d.id);
+
+      const instanceBounds = boundsForGroups(instanceGroups);
+      instanceLabelLayer.selectAll("text")
+        .data(instanceBounds)
+        .join("text")
+        .attr("x", d => d.cx)
+        .attr("y", d => d.minY - 50)
+        .attr("text-anchor", "middle")
+        .attr("fill", "#2b1f14")
+        .style("font", "10px \"Space Grotesk\", system-ui, sans-serif")
+        .text(d => d.id);
+      });
+    }
+
+  function renderDbGraph(dbId) {
+    const dbNode = (payload.machines || []).flatMap(m => m.databases || []).find(d => d.id === dbId);
+    if (!dbNode) return;
+    const machine = (payload.machines || []).find(m => (m.databases || []).some(d => d.id === dbId));
+    backBtn.style.display = "none";
+    document.getElementById("subtitle").textContent = "";
+    clearSvg();
+
+    const tables = [];
+    let totalColumns = 0;
+    (dbNode.tables || []).forEach(tbl => {
+      tables.push({
+        id: (dbNode.id || dbNode.name || "db") + ":" + (tbl.schema ? tbl.schema + "." : "") + tbl.name,
+        label: (tbl.schema ? tbl.schema + "." : "") + tbl.name,
+        columns: tbl.columns || [],
+        dbId: dbNode.id || dbNode.name || "db"
+      });
+      totalColumns += (tbl.columns || []).length;
+    });
+
+    const fkLinks = [];
+    (dbNode.foreign_keys || []).forEach(fk => {
+      const sourceId = (dbNode.id || dbNode.name || "db") + ":" + (fk.schema ? fk.schema + "." : "") + fk.table;
+      const targetId = (dbNode.id || dbNode.name || "db") + ":" + (fk.ref_schema ? fk.ref_schema + "." : "") + fk.ref_table;
+      if (sourceId !== targetId) {
+        fkLinks.push({
+          source: sourceId,
+          target: targetId,
+          label: fk.column + " → " + fk.ref_column,
+          srcCol: fk.column,
+          tgtCol: fk.ref_column,
+        });
+      }
+    });
+
+    const zoomLayer = svg.append("g");
+    const tableZoom = d3.zoom().scaleExtent([0.25, 2.5]).on("zoom", (event) => zoomLayer.attr("transform", event.transform));
+    svg.call(tableZoom);
+
+    const tableWidth = Math.min(340, Math.max(240, width * 0.24));
+    const headerHeight = 32;
+    const baseHeight = headerHeight + 14;
+    const rowHeight = 18;
+
+    
+    const cols = Math.max(1, Math.floor(width / (tableWidth + 60)));
+    tables.forEach((t, idx) => {
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      t.x = 100 + col * (tableWidth + 60);
+      t.y = 140 + row * 260;
+    });
+
+    const tableById = {};
+    tables.forEach(t => { tableById[t.id] = t; });
+    const fkLinksData = fkLinks
+      .map(l => ({ ...l, source: tableById[l.source], target: tableById[l.target] }))
+      .filter(l => l.source && l.target);
+
+    updateLegend("schema", { tables: tables.length, columns: totalColumns, fks: fkLinksData.length });
+
+    const defs = svg.append("defs");
+    defs.append("marker")
+      .attr("id", "fk-arrow")
+      .attr("viewBox", "0 0 10 10")
+      .attr("refX", 8)
+      .attr("refY", 5)
+      .attr("markerWidth", 8)
+      .attr("markerHeight", 8)
+      .attr("orient", "auto")
+      .append("path")
+      .attr("d", "M 0 0 L 10 5 L 0 10 z")
+      .attr("fill", "var(--link)");
+
+    const headerGrad = defs.append("linearGradient")
+      .attr("id", "tableHeaderGrad")
+      .attr("x1", "0%").attr("x2", "100%")
+      .attr("y1", "0%").attr("y2", "0%");
+    headerGrad.append("stop").attr("offset", "0%").attr("stop-color", "#8a5a2e");
+    headerGrad.append("stop").attr("offset", "100%").attr("stop-color", "#c47a32");
+
+    let tableSim;
+    const dragTables = d3.drag()
+      .on("start", (event, d) => {
+        d.fx = d.x; d.fy = d.y;
+        if (tableSim) tableSim.alphaTarget(0.3).restart();
+      })
+      .on("drag", (event, d) => { d.fx = event.x; d.fy = event.y; redraw(); })
+      .on("end", (event, d) => { d.fx = d.fy = null; if (tableSim) tableSim.alphaTarget(0); });
+
+    const node = zoomLayer.append("g")
+      .selectAll("g")
+      .data(tables)
+      .join("g")
+        .style("cursor", "move")
+        .call(dragTables);
+
+    const fkLine = zoomLayer.append("g")
+      .attr("stroke", "var(--link)")
+      .attr("stroke-width", 1.4)
+      .attr("stroke-opacity", 0.7)
+      .selectAll("line")
+      .data(fkLinksData)
+      .join("line")
+      .attr("marker-end", "url(#fk-arrow)");
+
+    const fkLabel = zoomLayer.append("g")
+      .selectAll("text")
+      .data(fkLinksData)
+      .join("text")
+      .attr("fill", "var(--link)")
+      .attr("font-size", 11)
+      .style("font", "11px \"Space Grotesk\", system-ui, sans-serif")
+      .text(d => d.label);
+
+    node.append("rect")
+      .attr("x", -tableWidth / 2)
+      .attr("y", d => - (baseHeight + d.columns.length * rowHeight) / 2)
+      .attr("width", tableWidth)
+      .attr("height", d => baseHeight + d.columns.length * rowHeight)
+      .attr("rx", 12)
+      .attr("ry", 12)
+      .attr("fill", "#1b120a")
+      .attr("stroke", "#c47a32")
+      .attr("stroke-width", 1.2)
+      .attr("filter", "drop-shadow(0 8px 18px rgba(0, 0, 0, 0.25))");
+
+    node.append("rect")
+      .attr("x", -tableWidth / 2)
+      .attr("y", d => - (baseHeight + d.columns.length * rowHeight) / 2)
+      .attr("width", tableWidth)
+      .attr("height", headerHeight)
+      .attr("rx", 12)
+      .attr("ry", 12)
+      .attr("fill", "url(#tableHeaderGrad)")
+      .attr("opacity", 0.92);
+
+    node.append("text")
+      .attr("text-anchor", "middle")
+      .attr("dy", d => - (baseHeight + d.columns.length * rowHeight) / 2 + headerHeight / 2 + 4)
+      .attr("fill", "#ffffff")
+      .style("font", "13px \"Space Grotesk\", system-ui, sans-serif")
+      .style("font-weight", "600")
+      .text(d => d.label);
+
+    node.each(function(d) {
+      const g = d3.select(this);
+      d.anchorMap = d.anchorMap || {};
+      d.columns.forEach((col, i) => {
+        const y = - (baseHeight + d.columns.length * rowHeight) / 2 + headerHeight + 6 + (i + 1) * rowHeight;
+        d.anchorMap[col.name] = y;
+        g.append("rect")
+          .attr("x", -tableWidth / 2 + 6)
+          .attr("y", y - rowHeight + 2)
+          .attr("width", tableWidth - 12)
+          .attr("height", rowHeight)
+          .attr("rx", 4)
+          .attr("ry", 4)
+          .attr("fill", i % 2 === 0 ? "rgba(43, 31, 20, 0.4)" : "rgba(79, 52, 31, 0.35)")
+          .attr("stroke", "rgba(196, 122, 50, 0.35)")
+          .attr("stroke-width", 0.5);
+        g.append("text")
+          .attr("x", -tableWidth / 2 + 12)
+          .attr("y", y)
+          .attr("fill", "#f5f3ef")
+          .style("font", "12px \"Space Grotesk\", monospace")
+          .text(col.name);
+        g.append("text")
+          .attr("x", tableWidth / 2 - 10)
+          .attr("y", y)
+          .attr("fill", "#d9a441")
+          .style("font", "11px \"Space Grotesk\", monospace")
+          .attr("text-anchor", "end")
+          .text(col.data_type + (col.is_nullable ? "" : " not null"));
+      });
+    });
+
+    attachTooltip(node, d => '<strong>' + d.label + '</strong><br/>' + d.columns.length + ' columns');
+
+    function focusOnTables() {
+      if (!tables.length) return;
+      const padding = 200;
+      const minX = d3.min(tables, d => d.x);
+      const maxX = d3.max(tables, d => d.x);
+      const minY = d3.min(tables, d => d.y);
+      const maxY = d3.max(tables, d => d.y);
+      const contentW = Math.max(10, maxX - minX);
+      const contentH = Math.max(10, maxY - minY);
+      const scale = Math.max(0.35, Math.min(1.4, 0.9 * Math.min(width / (contentW + padding), height / (contentH + padding))));
+      const tx = width / 2 - scale * (minX + contentW / 2);
+      const ty = height / 2 - scale * (minY + contentH / 2);
+      const target = d3.zoomIdentity.translate(tx, ty).scale(scale);
+      svg.call(tableZoom.transform, d3.zoomIdentity);
+      svg.transition().duration(400).call(tableZoom.transform, target);
+    }
+
+    function redraw() {
+      const anchorPos = (tbl, colName, otherX) => {
+        const dir = (otherX - tbl.x) >= 0 ? 1 : -1;
+        const yRel = (tbl.anchorMap && tbl.anchorMap[colName]) || 0;
+        const x = tbl.x + dir * (tableWidth / 2);
+        const y = tbl.y + yRel;
+        return { x, y };
+      };
+
+      fkLine
+        .attr("x1", d => anchorPos(d.source, d.srcCol, d.target.x).x)
+        .attr("y1", d => anchorPos(d.source, d.srcCol, d.target.x).y)
+        .attr("x2", d => anchorPos(d.target, d.tgtCol, d.source.x).x)
+        .attr("y2", d => anchorPos(d.target, d.tgtCol, d.source.x).y);
+
+      fkLabel
+        .attr("x", d => (anchorPos(d.source, d.srcCol, d.target.x).x + anchorPos(d.target, d.tgtCol, d.source.x).x) / 2)
+        .attr("y", d => (anchorPos(d.source, d.srcCol, d.target.x).y + anchorPos(d.target, d.tgtCol, d.source.x).y) / 2 - 6);
+
+      node.attr("transform", d => 'translate(' + d.x + ',' + d.y + ')');
+    }
+
+    redraw();
+    tableSim = d3.forceSimulation(tables)
+      .force("collision", d3.forceCollide().radius(d => Math.max(tableWidth / 2 + 22, (baseHeight + d.columns.length * rowHeight) / 2 + 22)).iterations(2))
+      .force("charge", d3.forceManyBody().strength(-80))
+      .on("tick", redraw);
+    setTimeout(() => tableSim.stop(), 1200);
+    setTimeout(focusOnTables, 200);
+  }
+
+function updateLegend(mode, meta = {}) {
+      const legendEl = document.querySelector(".legend");
+      if (!legendEl) return;
+      legendEl.innerHTML = "";
+      const items = mode === "schema"
+        ? [
+            { label: "Tables: " + ((meta.tables ?? "-")), color: "var(--accent)" },
+            { label: "Columns: " + ((meta.columns ?? "-")), color: "rgba(91,59,34,0.8)" },
+            { label: "Foreign keys: " + ((meta.fks ?? "-")), color: "var(--link)" }
+          ]
+        : [
+            { label: "Database", color: "var(--accent)" },
+            { label: "Instance outline (solid)", color: "#5b3b22" },
+            { label: "Machine outline (dotted)", color: "var(--accent-2)" },
+            { label: "Replication link", color: "var(--link)" }
+          ];
+      items.forEach(item => {
+        const span = document.createElement("span");
+        span.style.display = "flex";
+        span.style.alignItems = "center";
+        span.style.gap = "8px";
+        span.style.color = "var(--muted)";
+        const dot = document.createElement("span");
+        dot.style.width = "10px";
+        dot.style.height = "10px";
+        dot.style.borderRadius = "50%";
+        dot.style.background = item.color;
+        dot.style.boxShadow = "0 0 10px " + item.color;
+        span.appendChild(dot);
+        const text = document.createTextNode(item.label);
+        span.appendChild(text);
+        legendEl.appendChild(span);
+      });
+    }
+
+    backBtn.onclick = () => renderReplicationGraph();
+    resetBtn.onclick = () => renderReplicationGraph();
+
+    renderReplicationGraph();
+  </script>
+</body>
+</html>
